@@ -1,0 +1,2 @@
+# Ignore temp files that can be add accidentally
+.ipynb_checkpoints
