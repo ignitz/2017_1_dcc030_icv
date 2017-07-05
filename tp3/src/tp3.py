@@ -19,7 +19,7 @@ class Image:
 
     def __init__(self, **kwargs):
         self.name = kwargs.get('name', 'input.jpg')
-        self.path_input = kwargs.get('path_input', 'dados/')
+        self.path_input = kwargs.get('path_input', '')
         if len(self.path_input) > 0 and self.path_input[-1] != '/':
             self.path_input += '/'
         self.path_output = kwargs.get('path_output', 'export/')
@@ -36,6 +36,14 @@ class Image:
             return False
         else:
             return True
+
+    # Equalizacao do histograma, motivado pela imagem cinza de exemplo da documentacao
+    def equalize_hist(self):
+        kernel1 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
+        close = cv2.morphologyEx(self.img,cv2.MORPH_CLOSE,kernel1)
+        div = np.float32(self.img)/(close)
+        self.img = np.uint8(cv2.normalize(div,div,0,255,cv2.NORM_MINMAX))
+        self.img_original = self.img.copy()
 
     def threshold(self, div_value=180): # Convert to gray and make thresold of image
         # div_value: value between black and white
@@ -54,16 +62,9 @@ class Image:
         self.img = new_img
         return self.img
 
-    def blur(self, dim_size_x = 13, dim_size_y = 11, num_iter = 1): # Remove noise and blur image
-        # http://docs.opencv.org/3.0-beta/doc/py_tutorials/py_imgproc/py_morphological_ops/py_morphological_ops.html
-        # TODO: Make a away to get a mean of space between chars
+    def blur(self, dim_size_x = 7, dim_size_y = 7, num_iter = 1): # Remove noise and blur image
         
         kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (dim_size_x, dim_size_y))
-        # array([[0, 0, 1, 0, 0],
-        #    [0, 0, 1, 0, 0],
-        #    [1, 1, 1, 1, 1],
-        #    [0, 0, 1, 0, 0],
-        #    [0, 0, 1, 0, 0]], dtype=uint8)
         
         self.img = cv2.dilate(self.img, kernel, iterations=num_iter)
         return self.img
@@ -85,6 +86,8 @@ class Image:
             if w < w_max and h < h_max: # false points?
                 continue
 
+            line = list(line)
+            line.append(self.count_letters(x, y, w, h))
             string = ''
             for value in line:
                 string += str(value)
@@ -98,8 +101,26 @@ class Image:
             
             count = count + 1
         
-        print('Get ' + str(count - 1) + ' box of interest')
+        print('Get ' + str(count - 1) + ' box of words')
         return self.img_output
+
+    # Funcao incompleta, nao consegui
+    def count_letters(self, x, y, w, h):
+        print(x, y, w, h)
+        word = self.img_original[ y : y + h, x : x + w]
+        # word = self.opening(word)
+        # plt.imshow(word)
+        # plt.show()
+        word = self.closing(word)
+        word = self.opening(word)
+        kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+        word = cv2.dilate(word, kernel, 1)
+        
+        # plt.imshow(word)
+        # plt.show()
+
+        return 1
+
 
     def save(self): # save on file
         text_file = open(self.path_output + self.name + '.txt', 'w')
@@ -110,8 +131,8 @@ class Image:
         return cv2.imwrite(self.path_output + self.name, self.img_output)
 
     def print_on_notebook(self, x=20, y=20, img=None):
-    	# img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
-        plt.figure(figsize=(x,y))
+        # img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
+        # plt.figure(figsize=(x,y))
         plt.imshow(img)
         plt.show()
         
@@ -120,130 +141,83 @@ class Image:
         
     def show_img(self, x=20, y=20):
         self.print_on_notebook(x=x, y=y, img=self.img)
+
+    def opening(self, img, dim_size_x = 3, dim_size_y = 3):
+        kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (dim_size_x, dim_size_y))
+        return cv2.erode(cv2.dilate(img, kernel, 1), kernel, 1)
+
+    def closing(self, img, dim_size_x = 3, dim_size_y = 3):
+        kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (dim_size_x, dim_size_y))
+        return cv2.dilate(cv2.erode(img, kernel, 1), kernel, 1)
+
+def erode(img, dim_size_x=3, dim_size_y=3):
+    kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (dim_size_x, dim_size_y))
+    new_img = img.copy()
+    dim_img_x, dim_img_y = img.shape[:2]
+
+    max_value = 0
+    for x in xrange(dim_img_x):
+        for y in xrange(dim_img_y):
+            max_value = 0
+            for i in xrange(-divmod(dim_size_x,2)[0], divmod(dim_size_x,2)[0], 1):
+                for j in xrange(-divmod(dim_size_y,2)[0], divmod(dim_size_y,2)[0], 1):
+                    if 0 <= x + i < dim_img_x and 0 <= y + j < dim_img_y:
+                        if kernel[divmod(dim_size_x,2)[0] + i][divmod(dim_size_y,2)[0] + j] == 1:
+                            if max_value < img[x+i][y+j]:
+                                max_value = img[x+i][y+j]
+            new_img[x][y] = max_value
+    return new_img
+
+def dilate(img, dim_size_x=3, dim_size_y=3):
+    kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (dim_size_x, dim_size_y))
+    new_img = img.copy()
+    dim_img_x, dim_img_y = img.shape[:2]
     
-    def show_original_img(self, x=20, y=20):
-        self.print_on_notebook(x=x, y=y, img=self.img_original)
+    min_value = 0
+    for x in xrange(dim_img_x):
+        for y in xrange(dim_img_y):
+            min_value = 255
+            for i in xrange(-divmod(dim_size_x,2)[0], divmod(dim_size_x,2)[0], 1):
+                for j in xrange(-divmod(dim_size_y,2)[0], divmod(dim_size_y,2)[0], 1):
+                    if 0 <= x + i < dim_img_x and 0 <= y + j < dim_img_y:
+                        if kernel[divmod(dim_size_x,2)[0] + i][divmod(dim_size_y,2)[0] + j] == 1:
+                            if min_value > img[x+i][y+j]:
+                                min_value = img[x+i][y+j]
+            new_img[x][y] = min_value
+    return new_img
 
-def erode(img):
-	dim_size_x, dim_size_y = (13, 11)
-	kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (dim_size_x, dim_size_y))
+def opening(img, dim_size_x=3, dim_size_y=3):
+    return erode(dilate(img, dim_size_x=3, dim_size_y=3), dim_size_x=3, dim_size_y=3)
 
-	pprint.pprint(kernel)
-	
-
-def dilate(img):
-	pass
-
+def closing(img, dim_size_x=3, dim_size_y=3):
+    return dilate(erode(img, dim_size_x=3, dim_size_y=3), dim_size_x=3, dim_size_y=3)
 
 def main():
-	#  for output images
-	export_path = './export/'
-	if export_path[-1] != '/':
-	    export_path += '/'
+    #  for output images
+    export_path = './export/'
+    if export_path[-1] != '/':
+        export_path += '/'
 
-	# create export dir
-	if not os.path.isdir(export_path):
-	    os.mkdir(export_path)
+    # create export dir
+    if not os.path.isdir(export_path):
+        os.mkdir(export_path)
 
-	img = Image(name='sample.png')
-	if not img.open_image():
-	    raise Exception('failed to open file')
-	img.threshold()
-	img.show_img()
-	img.blur()
-	img.show_img()
-	img.draw_rectangles()
-	img.show_output()
-
-def histogram():
-	img = cv2.imread('dados/Lenna.png')
-	hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
-	hist = cv2.calcHist( [hsv], [0, 1], None, [180, 256], [0, 180, 0, 256] )
-	plt.imshow(hist,interpolation = 'nearest')
-	plt.show()
-
-def equalize_gray(img):
-    plt.imshow(img)
-    plt.show()
-
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    plt.imshow(img)
-    plt.show()
-    equ = cv2.equalizeHist(img)
-    res = np.hstack((img,equ)) #stacking images side-by-side
-    plt.imshow(res)
-    plt.show()
-
-    # hist,bins = np.histogram(img.flatten(),256,[0,256])
-
-    # cdf = hist.cumsum()
-    # cdf_normalized = cdf * hist.max()/ cdf.max()
-
-    # plt.plot(cdf_normalized, color = 'b')
-    # plt.hist(img.flatten(),256,[0,256], color = 'r')
-    # plt.xlim([0,256])
-    # plt.legend(('cdf','histogram'), loc = 'upper left')
-    # plt.show()
-    # cdf_m = np.ma.masked_equal(cdf,0)
-    # cdf_m = (cdf_m - cdf_m.min())*255/(cdf_m.max()-cdf_m.min())
-    # cdf = np.ma.filled(cdf_m,0).astype('uint8')
-    # img2 = cdf[img]
-
-def hisEqulColor(img):
-	# hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
-	# channels=cv2.split(hsv)
-	# cv2.equalizeHist(channels[2],channels[2])
-	# cv2.merge(channels, hsv)
-	# cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR, img)
-	# return img
-
-	img_yuv = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
-
-	# equalize the histogram of the Y channel
-	img_yuv[:,:,0] = cv2.equalizeHist(img_yuv[:,:,0])
-
-	# convert the YUV image back to RGB format
-	img_output = cv2.cvtColor(img_yuv, cv2.COLOR_YUV2BGR)
-
-	return img_output
-
-    # ycrcb=cv2.cvtColor(img,cv2.COLOR_BGR2YCR_CB)
-    # channels=cv2.split(ycrcb)
-    # print len(channels)
-    # cv2.equalizeHist(channels[0],channels[0])
-    # cv2.merge(channels,ycrcb)
-    # cv2.cvtColor(ycrcb, cv2.COLOR_YCR_CB2BGR, img)
-
+    
+    img = Image(name='sample.png')
+    if not img.open_image():
+        raise Exception('failed to open file')
+    img.equalize_hist()
+    # img.opening(3,3)
+    # img.show_img()
+    # img.closing(3,3)
+    # img.show_img()
+    img.threshold()
+    # img.show_img()
+    img.blur(7,1)
+    # img.show_img()
+    img.draw_rectangles()
+    img.show_img()
+    img.show_output()
 
 if __name__ == '__main__':
-	main()
-	sys.exit(0)
-	# histogram()
-	img = cv2.imread('dados/sample.png')
-	# plt.imshow(img)
-	# plt.show()
-	# img = hisEqulColor(img)
-	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-	img = cv2.equalizeHist(img)
-	clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-	img = clahe.apply(img)
-	for x in xrange(1,100):
-		img = clahe.apply(img)
-	
-	
-	img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-	# equalize_gray(img)
-	# img = erode(img)
-	# print(img)
-	plt.imshow(img)
-	plt.show()
-
-	
-	# plt.imshow()
-	# plt.show()
-	# plt.imshow(cv2.cvtColor(img2,cv2.COLOR_BGR2RGB))
-	# plt.show()
-
-# Equalizar
-# Converter pra grayscale
-# 
+    main()
